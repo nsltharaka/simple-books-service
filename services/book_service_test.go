@@ -1,6 +1,7 @@
 package services
 
 import (
+	"log/slog"
 	"os"
 	"testing"
 
@@ -23,7 +24,7 @@ func setupTestDB(t *testing.T) (*BookService, func()) {
 		os.Remove(filename)
 	}
 
-	return NewBookService(db), cleanup
+	return NewBookService(db, slog.New(slog.NewTextHandler(os.Stdout, nil))), cleanup
 }
 
 func TestCreateAndGetBook(t *testing.T) {
@@ -38,6 +39,52 @@ func TestCreateAndGetBook(t *testing.T) {
 	fetchedBook, err := service.GetBook(createdBook.ID)
 	assert.NoError(t, err)
 	assert.Equal(t, createdBook.Title, fetchedBook.Title)
+}
+
+func TestGetBooks(t *testing.T) {
+
+	service, cleanUp := setupTestDB(t)
+	t.Cleanup(cleanUp)
+
+	fetchedBooks, err := service.GetAllBooks()
+	assert.NoError(t, err)
+	assert.Equal(t, len(fetchedBooks), 0)
+
+	books := []models.Book{
+		{ID: 1, Title: "Book One", Author: "Author A", Year: 2021},
+		{ID: 2, Title: "Book Two", Author: "Author B", Year: 2022},
+		{ID: 3, Title: "Book Three", Author: "Author C", Year: 2023},
+	}
+
+	for _, book := range books {
+		service.CreateBook(&models.Book{
+			ID:     book.ID,
+			Title:  book.Title,
+			Author: book.Author,
+			Year:   book.Year,
+		})
+	}
+
+	t.Run("fetching an existing book", func(t *testing.T) {
+		want := books[0]
+		fetchedBook, err := service.GetBook(want.ID)
+		assert.NoError(t, err)
+		assert.Equal(t, want, *fetchedBook)
+	})
+
+	t.Run("fetching non-existing book", func(t *testing.T) {
+		var want uint = 99
+		fetchedBook, err := service.GetBook(want)
+		assert.Error(t, err)
+		assert.Nil(t, fetchedBook)
+	})
+
+	t.Run("fetching all books", func(t *testing.T) {
+		fetchedBooks, err := service.GetAllBooks()
+		assert.NoError(t, err)
+		assert.Equal(t, len(fetchedBooks), len(books))
+	})
+
 }
 
 func TestUpdateBook(t *testing.T) {
