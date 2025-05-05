@@ -15,3 +15,6 @@ install:
 	@echo "Installing dependencies..."
 	@go mod tidy
 	@echo "Dependencies installed."
+
+test:
+	@go test ./...
