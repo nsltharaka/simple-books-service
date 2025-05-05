@@ -1,8 +1,15 @@
 package services
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/nsltharaka/booksapi/models"
 	"gorm.io/gorm"
+)
+
+var (
+	ErrNotFound = errors.New("book not found")
 )
 
 type BookService struct {
@@ -15,7 +22,7 @@ func NewBookService(db *gorm.DB) *BookService {
 
 func (s *BookService) CreateBook(book *models.Book) (*models.Book, error) {
 	if err := s.db.Create(book).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create new book : %w", err)
 	}
 
 	return book, nil
@@ -24,7 +31,10 @@ func (s *BookService) CreateBook(book *models.Book) (*models.Book, error) {
 func (s *BookService) GetBook(id uint) (*models.Book, error) {
 	var book models.Book
 	if err := s.db.First(&book, id).Error; err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("%w: id %d", ErrNotFound, id)
+		}
+		return nil, fmt.Errorf("error while fetching the book : %w", err)
 	}
 
 	return &book, nil
@@ -33,7 +43,7 @@ func (s *BookService) GetBook(id uint) (*models.Book, error) {
 func (s *BookService) GetAllBooks() ([]models.Book, error) {
 	var books []models.Book
 	if err := s.db.Find(&books).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error while fetching books : %w", err)
 	}
 
 	return books, nil
@@ -42,7 +52,10 @@ func (s *BookService) GetAllBooks() ([]models.Book, error) {
 func (s *BookService) UpdateBook(payload *models.Book) (*models.Book, error) {
 	var book models.Book
 	if err := s.db.First(&book, payload.ID).Error; err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("%w: id %d", ErrNotFound, payload.ID)
+		}
+		return nil, fmt.Errorf("error while fetching the book : %w", err)
 	}
 
 	book.Title = payload.Title
@@ -50,7 +63,7 @@ func (s *BookService) UpdateBook(payload *models.Book) (*models.Book, error) {
 	book.Year = payload.Year
 
 	if err := s.db.Save(&book).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error while saving the book : %w", err)
 	}
 	return &book, nil
 }
@@ -58,11 +71,14 @@ func (s *BookService) UpdateBook(payload *models.Book) (*models.Book, error) {
 func (s *BookService) DeleteBook(id uint) (*models.Book, error) {
 	var book models.Book
 	if err := s.db.First(&book, id).Error; err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("%w: id %d", ErrNotFound, id)
+		}
+		return nil, fmt.Errorf("error while fetching the book : %w", err)
 	}
 
 	if err := s.db.Delete(&book).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error while deleting the book : %w", err)
 	}
 	return &book, nil
 }
