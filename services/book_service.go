@@ -45,8 +45,8 @@ func (s *BookService) GetBook(id uint) (*models.Book, error) {
 	return &book, nil
 }
 
-func (s *BookService) GetAllBooks() ([]models.Book, error) {
-	var books []models.Book
+func (s *BookService) GetAllBooks() ([]*models.Book, error) {
+	var books []*models.Book
 	if err := s.db.Find(&books).Error; err != nil {
 		s.logger.Error("error fetching books", "error", err)
 		return nil, fmt.Errorf("error while fetching books : %w", err)
