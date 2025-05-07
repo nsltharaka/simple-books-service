@@ -1,7 +1,9 @@
 package models
 
+import "gorm.io/gorm"
+
 type Book struct {
-	ID     uint   `json:"id" gorm:"primaryKey"`
+	gorm.Model
 	Title  string `json:"title" validate:"required,endsnotwith= "`
 	Author string `json:"author" validate:"required,endsnotwith= "`
 	Year   int    `json:"year" validate:"required,number"`

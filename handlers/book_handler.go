@@ -3,7 +3,6 @@ package handlers
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
@@ -32,7 +31,21 @@ func (handler *BookHandler) SetupRoutes(router fiber.Router) {
 }
 
 func (handler *BookHandler) getAllBooks(c *fiber.Ctx) error {
-	books, err := handler.bookService.GetAllBooks()
+
+	page := c.QueryInt("page")
+	if page <= 0 {
+		page = 1
+	}
+
+	limit := c.QueryInt("limit")
+	switch {
+	case limit > 100:
+		limit = 100
+	case limit <= 0:
+		limit = 10
+	}
+
+	books, err := handler.bookService.GetAllBooks(page, limit)
 	if err != nil {
 		return err
 	}
@@ -41,7 +54,7 @@ func (handler *BookHandler) getAllBooks(c *fiber.Ctx) error {
 }
 
 func (handler *BookHandler) getBook(c *fiber.Ctx) error {
-	bookId, err := strconv.Atoi(c.Params("id"))
+	bookId, err := c.ParamsInt("id")
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid parameter")
 	}
@@ -68,11 +81,7 @@ func (handler *BookHandler) newBook(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid payload")
 	}
 
-	createdBook, err := handler.bookService.CreateBook(&models.Book{
-		Title:  book.Title,
-		Author: book.Author,
-		Year:   book.Year,
-	})
+	createdBook, err := handler.bookService.CreateBook(&book)
 	if err != nil {
 		return err
 	}
@@ -82,7 +91,7 @@ func (handler *BookHandler) newBook(c *fiber.Ctx) error {
 }
 
 func (handler *BookHandler) updateBook(c *fiber.Ctx) error {
-	bookId, err := strconv.Atoi(c.Params("id"))
+	bookId, err := c.ParamsInt("id")
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid parameter")
 	}
@@ -111,7 +120,7 @@ func (handler *BookHandler) updateBook(c *fiber.Ctx) error {
 }
 
 func (handler *BookHandler) deleteBook(c *fiber.Ctx) error {
-	bookId, err := strconv.Atoi(c.Params("id"))
+	bookId, err := c.ParamsInt("id")
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid parameter")
 	}

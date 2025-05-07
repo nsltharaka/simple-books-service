@@ -45,13 +45,14 @@ func (s *BookService) GetBook(id uint) (*models.Book, error) {
 	return &book, nil
 }
 
-func (s *BookService) GetAllBooks() ([]*models.Book, error) {
+func (s *BookService) GetAllBooks(page, limit int) ([]*models.Book, error) {
 	var books []*models.Book
-	if err := s.db.Find(&books).Error; err != nil {
-		s.logger.Error("error fetching books", "error", err)
+	offset := (page - 1) * limit
+	if err := s.db.Limit(limit).Offset(offset).Find(&books).Error; err != nil {
+		s.logger.Error("error fetching paginated books", "error", err)
 		return nil, fmt.Errorf("error while fetching books : %w", err)
 	}
-	s.logger.Info("fetched all books", "count", len(books))
+	s.logger.Info("fetched paginated books", "count", len(books), "page", page, "limit", limit)
 	return books, nil
 }
 

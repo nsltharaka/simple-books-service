@@ -72,9 +72,18 @@ func TestGetBooksHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, res.StatusCode)
 	})
 
+	t.Run("Get all books with pagination", func(t *testing.T) {
+		app := setupTestApp(t)
+		req := httptest.NewRequest("GET", "/books?page=1&limit=10", nil)
+		res, err := app.Test(req, -1)
+
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+	})
+
 	t.Run("Get existing book", func(t *testing.T) {
 
-		expected := models.Book{ID: 1, Title: "Book One", Author: "Author A", Year: 2021}
+		expected := models.Book{Title: "Book One", Author: "Author A", Year: 2021}
 
 		app := setupTestApp(t)
 		req := httptest.NewRequest("GET", "/books/1", nil)
