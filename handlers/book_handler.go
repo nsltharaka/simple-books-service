@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/nsltharaka/booksapi/models"
 	"github.com/nsltharaka/booksapi/services"
@@ -12,11 +13,13 @@ import (
 
 type BookHandler struct {
 	bookService *services.BookService
+	validate    *validator.Validate
 }
 
-func NewBookHandler(service *services.BookService) *BookHandler {
+func NewBookHandler(service *services.BookService, validator *validator.Validate) *BookHandler {
 	return &BookHandler{
 		bookService: service,
+		validate:    validator,
 	}
 }
 
@@ -31,25 +34,24 @@ func (handler *BookHandler) SetupRoutes(router fiber.Router) {
 func (handler *BookHandler) getAllBooks(c *fiber.Ctx) error {
 	books, err := handler.bookService.GetAllBooks()
 	if err != nil {
-		return c.Status(http.StatusInternalServerError).JSON(err.Error())
+		return err
 	}
 
 	return c.Status(http.StatusOK).JSON(books)
 }
 
 func (handler *BookHandler) getBook(c *fiber.Ctx) error {
-	param := c.Params("id", "")
-	bookId, err := strconv.Atoi(param)
+	bookId, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		return c.Status(http.StatusBadRequest).JSON(err.Error())
+		return fiber.NewError(fiber.StatusBadRequest, "invalid parameter")
 	}
 
 	book, err := handler.bookService.GetBook(uint(bookId))
 	if err != nil {
 		if errors.Is(err, services.ErrNotFound) {
-			return c.Status(http.StatusNotFound).JSON(err.Error())
+			return fiber.NewError(fiber.StatusNotFound, err.Error())
 		}
-		return c.Status(http.StatusInternalServerError).JSON(err.Error())
+		return err
 	}
 
 	return c.Status(http.StatusOK).JSON(book)
@@ -58,7 +60,12 @@ func (handler *BookHandler) getBook(c *fiber.Ctx) error {
 func (handler *BookHandler) newBook(c *fiber.Ctx) error {
 	var book models.Book
 	if err := c.BodyParser(&book); err != nil {
-		return c.Status(http.StatusBadRequest).JSON(err.Error())
+		return fiber.NewError(fiber.StatusBadRequest, "invalid Content-Type")
+	}
+
+	err := handler.validate.Struct(&book)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid payload")
 	}
 
 	createdBook, err := handler.bookService.CreateBook(&models.Book{
@@ -67,7 +74,7 @@ func (handler *BookHandler) newBook(c *fiber.Ctx) error {
 		Year:   book.Year,
 	})
 	if err != nil {
-		return c.Status(http.StatusInternalServerError).JSON(err.Error())
+		return err
 	}
 
 	return c.Status(http.StatusCreated).JSON(createdBook)
@@ -75,9 +82,47 @@ func (handler *BookHandler) newBook(c *fiber.Ctx) error {
 }
 
 func (handler *BookHandler) updateBook(c *fiber.Ctx) error {
-	return nil
+	bookId, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid parameter")
+	}
+
+	var book models.Book
+	if err := c.BodyParser(&book); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid Content-Type")
+	}
+
+	err = handler.validate.Struct(&book)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid payload")
+	}
+
+	book.ID = uint(bookId)
+	updatedBook, err := handler.bookService.UpdateBook(&book)
+	if err != nil {
+		if errors.Is(err, services.ErrNotFound) {
+			return fiber.NewError(fiber.StatusNotFound, err.Error())
+		}
+		return err
+	}
+
+	return c.Status(fiber.StatusOK).JSON(updatedBook)
+
 }
 
 func (handler *BookHandler) deleteBook(c *fiber.Ctx) error {
-	return nil
+	bookId, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid parameter")
+	}
+
+	book, err := handler.bookService.DeleteBook(uint(bookId))
+	if err != nil {
+		if errors.Is(err, services.ErrNotFound) {
+			return fiber.NewError(fiber.StatusNotFound, err.Error())
+		}
+		return err
+	}
+
+	return c.Status(http.StatusNoContent).JSON(book)
 }

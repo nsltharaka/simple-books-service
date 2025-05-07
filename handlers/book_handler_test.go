@@ -3,13 +3,16 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/nsltharaka/booksapi/database"
 	"github.com/nsltharaka/booksapi/models"
@@ -49,8 +52,10 @@ func setupTestApp(t *testing.T) *fiber.App {
 	service, cleanup := setupTestService(t)
 	t.Cleanup(cleanup)
 
+	validator := validator.New(validator.WithRequiredStructEnabled())
+
 	app := fiber.New()
-	handler := NewBookHandler(service)
+	handler := NewBookHandler(service, validator)
 	handler.SetupRoutes(app)
 
 	return app
@@ -116,24 +121,69 @@ func TestCreateBook(t *testing.T) {
 	jsonString, _ := json.Marshal(&book)
 
 	app := setupTestApp(t)
-	req := httptest.NewRequest("POST", "/books", bytes.NewReader(jsonString))
-	req.Header.Add("Content-Type", "application/json")
 
-	res, err := app.Test(req, -1)
-	assert.NoError(t, err)
+	t.Run("creating a book without request payload", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/books", nil)
+		req.Header.Add("Content-Type", "application/json")
 
-	resBody, _ := io.ReadAll(res.Body)
+		res, err := app.Test(req, -1)
+		assert.NoError(t, err)
 
-	var result models.Book
-	json.Unmarshal(resBody, &result)
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	})
 
-	assert.Equal(t, http.StatusCreated, res.StatusCode)
-	assert.Equal(t, uint(4), result.ID)
+	t.Run("creating a book with malformed request payload", func(t *testing.T) {
+		testPayloads := []string{
+			`{"malformedTitle" : "test", "malformedAuthor" : "test", "malformedYear" : "test"}`, // malformed fields
+			`{"title" : "", "author" : "", "year" : ""}`,                                        // with zero values
+			`{"title" : "", "author" : "testAuthor", "year" : 2025}`,                            // one field with zero value
+			`{"title" : " ", "author" : "testAuthor", "year" : 2025}`,                           // string field with space
+			`{"title" : "testTitle", "author" : "testAuthor", "year" : 0}`,                      // number field with zero value
+			`{"title": "testTitle", "author": "testAuthor", "year":}`,                           // missing value
+			`{"title": "testTitle", "author": "testAuthor", "year": 2025`,                       // missing closing brace
+			`"title": "testTitle", "author": "testAuthor", "year": 2025}`,                       // missing opening brace
+			`{title: "testTitle", author: "testAuthor", year: 2025}`,                            // keys not in quotes
+			`{}`, // empty object
+		}
+
+		for idx, malformedJson := range testPayloads {
+			idx := idx
+			malformedJson := malformedJson
+
+			t.Run(fmt.Sprintf("test payload : %d", idx+1), func(t *testing.T) {
+				req := httptest.NewRequest("POST", "/books", strings.NewReader(malformedJson))
+				req.Header.Set("Content-Type", "application/json")
+
+				res, err := app.Test(req, -1)
+
+				assert.NoError(t, err)
+				assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+			})
+		}
+	})
+
+	t.Run("creating a book with correct payload", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/books", bytes.NewReader(jsonString))
+		req.Header.Add("Content-Type", "application/json")
+
+		res, err := app.Test(req, -1)
+		assert.NoError(t, err)
+
+		resBody, _ := io.ReadAll(res.Body)
+
+		var result models.Book
+		json.Unmarshal(resBody, &result)
+
+		assert.Equal(t, http.StatusCreated, res.StatusCode)
+		assert.Equal(t, uint(4), result.ID)
+		assert.Equal(t, book.Title, result.Title)
+		assert.Equal(t, book.Author, result.Author)
+		assert.Equal(t, book.Year, result.Year)
+	})
 
 }
 
 func TestUpdateBook(t *testing.T) {
-	app := setupTestApp(t)
 
 	updatedBook := struct {
 		Title  string
@@ -146,35 +196,106 @@ func TestUpdateBook(t *testing.T) {
 	}
 
 	body, _ := json.Marshal(&updatedBook)
-	req := httptest.NewRequest("PUT", "/books/1", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
 
-	res, err := app.Test(req, -1)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, res.StatusCode)
+	t.Run("update request with invalid param", func(t *testing.T) {
+		app := setupTestApp(t)
 
-	var result models.Book
-	resBody, _ := io.ReadAll(res.Body)
-	json.Unmarshal(resBody, &result)
+		req := httptest.NewRequest("PUT", "/books/xx", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
 
-	assert.Equal(t, uint(1), result.ID)
-	assert.Equal(t, updatedBook.Title, result.Title)
-	assert.Equal(t, updatedBook.Author, result.Author)
-	assert.Equal(t, updatedBook.Year, result.Year)
+		res, err := app.Test(req, -1)
+		assert.NoError(t, err)
+
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	})
+
+	t.Run("updating an existing book without request body", func(t *testing.T) {
+		app := setupTestApp(t)
+
+		req := httptest.NewRequest("PUT", "/books/1", nil)
+		req.Header.Set("Content-Type", "application/json")
+
+		res, err := app.Test(req, -1)
+
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	})
+
+	t.Run("updating an existing book with malformed request body", func(t *testing.T) {
+		app := setupTestApp(t)
+
+		testPayloads := []string{
+			`{"malformedTitle" : "test", "malformedAuthor" : "test", "malformedYear" : "test"}`, // malformed fields
+			`{"title" : "", "author" : "", "year" : ""}`,                                        // with zero values
+			`{"title" : "", "author" : "testAuthor", "year" : 2025}`,                            // one field with zero value
+			`{"title" : " ", "author" : "testAuthor", "year" : 2025}`,                           // string field with space
+			`{"title" : "testTitle", "author" : "testAuthor", "year" : 0}`,                      // number field with zero value
+			`{"title": "testTitle", "author": "testAuthor", "year":}`,                           // missing value
+			`{"title": "testTitle", "author": "testAuthor", "year": 2025`,                       // missing closing brace
+			`"title": "testTitle", "author": "testAuthor", "year": 2025}`,                       // missing opening brace
+			`{title: "testTitle", author: "testAuthor", year: 2025}`,                            // keys not in quotes
+			`{}`, // empty object
+		}
+
+		for idx, malformedJson := range testPayloads {
+			idx := idx
+			malformedJson := malformedJson
+
+			t.Run(fmt.Sprintf("test payload : %d", idx+1), func(t *testing.T) {
+				req := httptest.NewRequest("PUT", "/books/1", strings.NewReader(malformedJson))
+				req.Header.Set("Content-Type", "application/json")
+
+				res, err := app.Test(req, -1)
+
+				assert.NoError(t, err)
+				assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+			})
+		}
+
+	})
+
+	t.Run("updating an existing book", func(t *testing.T) {
+		app := setupTestApp(t)
+
+		req := httptest.NewRequest("PUT", "/books/1", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		res, err := app.Test(req, -1)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var result models.Book
+		resBody, _ := io.ReadAll(res.Body)
+		json.Unmarshal(resBody, &result)
+
+		assert.Equal(t, uint(1), result.ID)
+		assert.Equal(t, updatedBook.Title, result.Title)
+		assert.Equal(t, updatedBook.Author, result.Author)
+		assert.Equal(t, updatedBook.Year, result.Year)
+	})
+
 }
 
 func TestDeleteBook(t *testing.T) {
 	app := setupTestApp(t)
 
-	// Delete book with ID 1
-	req := httptest.NewRequest("DELETE", "/books/1", nil)
-	res, err := app.Test(req, -1)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusNoContent, res.StatusCode)
+	t.Run("Deleting a non-existing book", func(t *testing.T) {
+		req := httptest.NewRequest("DELETE", "/books/99", nil)
+		res, err := app.Test(req, -1)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	})
 
-	// Try to get deleted book
-	getReq := httptest.NewRequest("GET", "/books/1", nil)
-	getRes, err := app.Test(getReq, -1)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusNotFound, getRes.StatusCode)
+	t.Run("Deleting an existing book", func(t *testing.T) {
+		req := httptest.NewRequest("DELETE", "/books/1", nil)
+		res, err := app.Test(req, -1)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusNoContent, res.StatusCode)
+
+		getReq := httptest.NewRequest("GET", "/books/1", nil)
+		getRes, err := app.Test(getReq, -1)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusNotFound, getRes.StatusCode)
+	})
+
 }
