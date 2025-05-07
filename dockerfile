@@ -1,8 +1,12 @@
 FROM golang:1.24-alpine
 
-WORKDIR /app
+# Enable CGO and install C toolchain
+ENV CGO_ENABLED=1
+ENV GOOS=linux
 
-RUN apk add --no-cache git sqlite
+RUN apk add --no-cache git sqlite build-base
+
+WORKDIR /app
 
 COPY go.mod go.sum ./
 RUN go mod download

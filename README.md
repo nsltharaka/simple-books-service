@@ -68,6 +68,17 @@ $ make run
 $ go run .
 ```
 
+### 5. Run with Docker
+
+You can build and run the app inside a Docker container:
+
+```bash
+$ docker build -t book-api .
+$ docker run -p 3030:3030 book-api
+```
+
+The app will be accessible at `http://localhost:3030/api/v1/books`.
+
 ## 📘 API Endpoints
 
 ### Create a Book

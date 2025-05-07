@@ -6,3 +6,6 @@
 
 # sqlite db files
 *.db
+
+# misc
+.DS_Store
