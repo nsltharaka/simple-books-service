@@ -13,11 +13,10 @@ import (
 func setupTestDB(t *testing.T) (*BookService, func()) {
 	filename := "test_service.db"
 	os.Setenv("SQLITE_FILENAME", filename)
-	db, err := database.Connection()
+	db, err := database.Connect()
 	if err != nil {
 		t.Fatalf("failed to connect to test db: %v", err)
 	}
-	db.AutoMigrate(&models.Book{})
 
 	books := []models.Book{
 		{Title: "Book One", Author: "Author A", Year: 2021},

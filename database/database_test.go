@@ -9,7 +9,7 @@ func TestConnection(t *testing.T) {
 
 	t.Run("returns error if SQLITE_FILENAME is not set", func(t *testing.T) {
 		os.Unsetenv("SQLITE_FILENAME")
-		_, err := Connection()
+		_, err := Connect()
 		if err == nil {
 			t.Fatal("expected an error, got nil")
 		}
@@ -20,7 +20,7 @@ func TestConnection(t *testing.T) {
 		os.Setenv("SQLITE_FILENAME", tempFile)
 		defer os.Remove(tempFile)
 
-		db, err := Connection()
+		db, err := Connect()
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}

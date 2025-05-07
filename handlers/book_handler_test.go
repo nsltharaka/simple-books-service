@@ -22,8 +22,7 @@ import (
 func setupTestService(t *testing.T) (*services.BookService, func()) {
 	filename := "test.db"
 	os.Setenv("SQLITE_FILENAME", filename)
-	db, _ := database.Connection()
-	db.AutoMigrate(&models.Book{})
+	db, _ := database.Connect()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	service := services.NewBookService(db, logger)
