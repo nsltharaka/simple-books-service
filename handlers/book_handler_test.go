@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -54,10 +53,12 @@ func setupTestApp(t *testing.T) *fiber.App {
 
 	validator := validator.New(validator.WithRequiredStructEnabled())
 
-	app := fiber.New()
 	handler := NewBookHandler(service, validator)
-	handler.SetupRoutes(app)
+	app := fiber.New(fiber.Config{
+		ErrorHandler: handler.ErrorHandler,
+	})
 
+	handler.SetupRoutes(app)
 	return app
 }
 
@@ -68,17 +69,29 @@ func TestGetBooksHandler(t *testing.T) {
 		req := httptest.NewRequest("GET", "/books", nil)
 		res, err := app.Test(req, -1)
 
+		var apiResponse apiResponse
+		json.NewDecoder(res.Body).Decode(&apiResponse)
+
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, res.StatusCode)
+		assert.Equal(t, "success", apiResponse.Message)
+		assert.NotEmpty(t, apiResponse.Data)
+		assert.Len(t, apiResponse.Data, 3)
 	})
 
 	t.Run("Get all books with pagination", func(t *testing.T) {
 		app := setupTestApp(t)
-		req := httptest.NewRequest("GET", "/books?page=1&limit=10", nil)
+		req := httptest.NewRequest("GET", "/books?page=1&limit=2", nil)
 		res, err := app.Test(req, -1)
+
+		var apiResponse apiResponse
+		json.NewDecoder(res.Body).Decode(&apiResponse)
 
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, res.StatusCode)
+		assert.Equal(t, "success", apiResponse.Message)
+		assert.NotEmpty(t, apiResponse.Data)
+		assert.Len(t, apiResponse.Data, 2)
 	})
 
 	t.Run("Get existing book", func(t *testing.T) {
@@ -91,16 +104,21 @@ func TestGetBooksHandler(t *testing.T) {
 		res, err := app.Test(req, -1)
 		assert.NoError(t, err)
 
-		body, err := io.ReadAll(res.Body)
-		assert.NoError(t, err)
-
-		var result models.Book
-		json.Unmarshal(body, &result)
+		var apiResponse struct {
+			Data    models.Book `json:"data"`
+			Message string      `json:"message"`
+			Error   string      `json:"error"`
+		}
+		json.NewDecoder(res.Body).Decode(&apiResponse)
 
 		assert.Equal(t, http.StatusOK, res.StatusCode)
-		assert.Equal(t, result, expected)
-
+		assert.Equal(t, expected.Title, apiResponse.Data.Title)
+		assert.Equal(t, expected.Author, apiResponse.Data.Author)
+		assert.Equal(t, expected.Year, apiResponse.Data.Year)
+		assert.Equal(t, "success", apiResponse.Message)
+		assert.Empty(t, apiResponse.Error)
 	})
+
 	t.Run("Get non-existing book", func(t *testing.T) {
 
 		app := setupTestApp(t)
@@ -109,7 +127,15 @@ func TestGetBooksHandler(t *testing.T) {
 		res, err := app.Test(req, -1)
 		assert.NoError(t, err)
 
+		var apiResponse struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+		}
+		json.NewDecoder(res.Body).Decode(&apiResponse)
+
 		assert.Equal(t, http.StatusNotFound, res.StatusCode)
+		assert.Contains(t, apiResponse.Error, "book not found")
+		assert.Equal(t, "error", apiResponse.Message)
 
 	})
 
@@ -138,7 +164,15 @@ func TestCreateBook(t *testing.T) {
 		res, err := app.Test(req, -1)
 		assert.NoError(t, err)
 
+		var apiResponse struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+		}
+		json.NewDecoder(res.Body).Decode(&apiResponse)
+
 		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+		assert.Equal(t, "error", apiResponse.Message)
+		assert.Equal(t, "invalid payload", apiResponse.Error)
 	})
 
 	t.Run("creating a book with malformed request payload", func(t *testing.T) {
@@ -164,9 +198,17 @@ func TestCreateBook(t *testing.T) {
 				req.Header.Set("Content-Type", "application/json")
 
 				res, err := app.Test(req, -1)
-
 				assert.NoError(t, err)
+
+				var apiResponse struct {
+					Error   string `json:"error"`
+					Message string `json:"message"`
+				}
+				json.NewDecoder(res.Body).Decode(&apiResponse)
+
 				assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+				assert.Equal(t, "error", apiResponse.Message)
+				assert.Equal(t, "invalid payload", apiResponse.Error)
 			})
 		}
 	})
@@ -178,16 +220,20 @@ func TestCreateBook(t *testing.T) {
 		res, err := app.Test(req, -1)
 		assert.NoError(t, err)
 
-		resBody, _ := io.ReadAll(res.Body)
-
-		var result models.Book
-		json.Unmarshal(resBody, &result)
+		var apiResponse struct {
+			Error   string      `json:"error"`
+			Message string      `json:"message"`
+			Data    models.Book `json:"data"`
+		}
+		json.NewDecoder(res.Body).Decode(&apiResponse)
 
 		assert.Equal(t, http.StatusCreated, res.StatusCode)
-		assert.Equal(t, uint(4), result.ID)
-		assert.Equal(t, book.Title, result.Title)
-		assert.Equal(t, book.Author, result.Author)
-		assert.Equal(t, book.Year, result.Year)
+		assert.Equal(t, uint(4), apiResponse.Data.ID)
+		assert.Equal(t, book.Title, apiResponse.Data.Title)
+		assert.Equal(t, book.Author, apiResponse.Data.Author)
+		assert.Equal(t, book.Year, apiResponse.Data.Year)
+		assert.Equal(t, "success", apiResponse.Message)
+		assert.Empty(t, apiResponse.Error)
 	})
 
 }
@@ -215,7 +261,15 @@ func TestUpdateBook(t *testing.T) {
 		res, err := app.Test(req, -1)
 		assert.NoError(t, err)
 
+		var apiResponse struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+		}
+		json.NewDecoder(res.Body).Decode(&apiResponse)
+
 		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+		assert.Equal(t, "error", apiResponse.Message)
+		assert.Equal(t, "invalid parameter", apiResponse.Error)
 	})
 
 	t.Run("updating an existing book without request body", func(t *testing.T) {
@@ -225,9 +279,18 @@ func TestUpdateBook(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 
 		res, err := app.Test(req, -1)
-
 		assert.NoError(t, err)
+
+		var apiResponse struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+		}
+		json.NewDecoder(res.Body).Decode(&apiResponse)
+
 		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+		assert.Equal(t, "error", apiResponse.Message)
+		assert.Equal(t, "invalid payload", apiResponse.Error)
+
 	})
 
 	t.Run("updating an existing book with malformed request body", func(t *testing.T) {
@@ -255,9 +318,17 @@ func TestUpdateBook(t *testing.T) {
 				req.Header.Set("Content-Type", "application/json")
 
 				res, err := app.Test(req, -1)
-
 				assert.NoError(t, err)
+
+				var apiResponse struct {
+					Error   string `json:"error"`
+					Message string `json:"message"`
+				}
+				json.NewDecoder(res.Body).Decode(&apiResponse)
+
 				assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+				assert.Equal(t, "error", apiResponse.Message)
+				assert.Equal(t, "invalid payload", apiResponse.Error)
 			})
 		}
 
@@ -271,16 +342,21 @@ func TestUpdateBook(t *testing.T) {
 
 		res, err := app.Test(req, -1)
 		assert.NoError(t, err)
+
+		var apiResponse struct {
+			Error   string      `json:"error"`
+			Message string      `json:"message"`
+			Data    models.Book `json:"data"`
+		}
+		json.NewDecoder(res.Body).Decode(&apiResponse)
+
 		assert.Equal(t, http.StatusOK, res.StatusCode)
-
-		var result models.Book
-		resBody, _ := io.ReadAll(res.Body)
-		json.Unmarshal(resBody, &result)
-
-		assert.Equal(t, uint(1), result.ID)
-		assert.Equal(t, updatedBook.Title, result.Title)
-		assert.Equal(t, updatedBook.Author, result.Author)
-		assert.Equal(t, updatedBook.Year, result.Year)
+		assert.Equal(t, uint(1), apiResponse.Data.ID)
+		assert.Equal(t, updatedBook.Title, apiResponse.Data.Title)
+		assert.Equal(t, updatedBook.Author, apiResponse.Data.Author)
+		assert.Equal(t, updatedBook.Year, apiResponse.Data.Year)
+		assert.Equal(t, "success", apiResponse.Message)
+		assert.Empty(t, apiResponse.Error)
 	})
 
 }
@@ -292,19 +368,77 @@ func TestDeleteBook(t *testing.T) {
 		req := httptest.NewRequest("DELETE", "/books/99", nil)
 		res, err := app.Test(req, -1)
 		assert.NoError(t, err)
+
+		var apiResponse struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+		}
+		json.NewDecoder(res.Body).Decode(&apiResponse)
+
 		assert.Equal(t, http.StatusNotFound, res.StatusCode)
+		assert.Equal(t, "error", apiResponse.Message)
+		assert.Contains(t, apiResponse.Error, "book not found")
 	})
 
 	t.Run("Deleting an existing book", func(t *testing.T) {
 		req := httptest.NewRequest("DELETE", "/books/1", nil)
 		res, err := app.Test(req, -1)
 		assert.NoError(t, err)
-		assert.Equal(t, http.StatusNoContent, res.StatusCode)
+
+		var apiResponse struct {
+			Error   string      `json:"error"`
+			Message string      `json:"message"`
+			Data    models.Book `json:"data"`
+		}
+		json.NewDecoder(res.Body).Decode(&apiResponse)
+
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+		assert.Equal(t, uint(1), apiResponse.Data.ID)
 
 		getReq := httptest.NewRequest("GET", "/books/1", nil)
 		getRes, err := app.Test(getReq, -1)
 		assert.NoError(t, err)
+
+		json.NewDecoder(getRes.Body).Decode(&apiResponse)
+
 		assert.Equal(t, http.StatusNotFound, getRes.StatusCode)
+		assert.Equal(t, "error", apiResponse.Message)
+		assert.Contains(t, apiResponse.Error, "book not found")
+
 	})
 
+	t.Run("deleting a book with an invalid param", func(t *testing.T) {
+
+		req := httptest.NewRequest("DELETE", "/books/xx", nil)
+
+		res, err := app.Test(req, -1)
+		assert.NoError(t, err)
+
+		var apiResponse struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+		}
+		json.NewDecoder(res.Body).Decode(&apiResponse)
+
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+		assert.Equal(t, "error", apiResponse.Message)
+		assert.Equal(t, "invalid parameter", apiResponse.Error)
+	})
+
+	t.Run("deleting a book with an empty param", func(t *testing.T) {
+		req := httptest.NewRequest("DELETE", "/books", nil)
+
+		res, err := app.Test(req, -1)
+		assert.NoError(t, err)
+
+		var apiResponse struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+		}
+		json.NewDecoder(res.Body).Decode(&apiResponse)
+
+		assert.Equal(t, http.StatusMethodNotAllowed, res.StatusCode)
+		assert.Equal(t, "error", apiResponse.Message)
+		assert.Equal(t, "Method Not Allowed", apiResponse.Error)
+	})
 }

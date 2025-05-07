@@ -30,6 +30,23 @@ func (handler *BookHandler) SetupRoutes(router fiber.Router) {
 	router.Delete("/books/:id", handler.deleteBook)
 }
 
+func (handler *BookHandler) ErrorHandler(c *fiber.Ctx, err error) error {
+
+	code := fiber.StatusInternalServerError
+
+	var e *fiber.Error
+	if errors.As(err, &e) {
+		code = e.Code
+	}
+
+	c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+
+	return c.Status(code).JSON(apiResponse{
+		Message: "error",
+		Error:   err.Error(),
+	})
+}
+
 func (handler *BookHandler) getAllBooks(c *fiber.Ctx) error {
 
 	page := c.QueryInt("page")
@@ -50,7 +67,10 @@ func (handler *BookHandler) getAllBooks(c *fiber.Ctx) error {
 		return err
 	}
 
-	return c.Status(http.StatusOK).JSON(books)
+	return c.Status(http.StatusOK).JSON(apiResponse{
+		Data:    books,
+		Message: "success",
+	})
 }
 
 func (handler *BookHandler) getBook(c *fiber.Ctx) error {
@@ -67,13 +87,18 @@ func (handler *BookHandler) getBook(c *fiber.Ctx) error {
 		return err
 	}
 
-	return c.Status(http.StatusOK).JSON(book)
+	return c.Status(http.StatusOK).JSON(apiResponse{
+		Data:    book,
+		Message: "success",
+	})
 }
 
 func (handler *BookHandler) newBook(c *fiber.Ctx) error {
 	var book models.Book
 	if err := c.BodyParser(&book); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid Content-Type")
+		if errors.Is(err, fiber.ErrUnprocessableEntity) {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid Content-Type")
+		}
 	}
 
 	err := handler.validate.Struct(&book)
@@ -86,7 +111,10 @@ func (handler *BookHandler) newBook(c *fiber.Ctx) error {
 		return err
 	}
 
-	return c.Status(http.StatusCreated).JSON(createdBook)
+	return c.Status(http.StatusCreated).JSON(apiResponse{
+		Data:    createdBook,
+		Message: "success",
+	})
 
 }
 
@@ -98,7 +126,9 @@ func (handler *BookHandler) updateBook(c *fiber.Ctx) error {
 
 	var book models.Book
 	if err := c.BodyParser(&book); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid Content-Type")
+		if errors.Is(err, fiber.ErrUnprocessableEntity) {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid Content-Type")
+		}
 	}
 
 	err = handler.validate.Struct(&book)
@@ -115,7 +145,10 @@ func (handler *BookHandler) updateBook(c *fiber.Ctx) error {
 		return err
 	}
 
-	return c.Status(fiber.StatusOK).JSON(updatedBook)
+	return c.Status(fiber.StatusOK).JSON(apiResponse{
+		Data:    updatedBook,
+		Message: "success",
+	})
 
 }
 
@@ -133,5 +166,14 @@ func (handler *BookHandler) deleteBook(c *fiber.Ctx) error {
 		return err
 	}
 
-	return c.Status(http.StatusNoContent).JSON(book)
+	return c.Status(http.StatusOK).JSON(apiResponse{
+		Data:    book,
+		Message: "success",
+	})
+}
+
+type apiResponse struct {
+	Data    any    `json:"data,omitempty"`
+	Message string `json:"message,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
