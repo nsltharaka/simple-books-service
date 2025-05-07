@@ -2,6 +2,7 @@ package main
 
 import (
 	"log/slog"
+	"net"
 	"os"
 
 	"github.com/go-playground/validator/v10"
@@ -13,11 +14,28 @@ import (
 	"github.com/nsltharaka/booksapi/services"
 )
 
-func main() {
-
+func envConfig() string {
 	if err := godotenv.Load(); err != nil {
 		panic("error passing environment variables")
 	}
+
+	host := os.Getenv("HOST")
+	port := os.Getenv("PORT")
+
+	if host == "" {
+		host = "localhost"
+	}
+	if port == "" {
+		port = "3030"
+	}
+
+	return net.JoinHostPort(host, port)
+
+}
+
+func main() {
+
+	serverAddr := envConfig()
 
 	db, err := database.Connect()
 	if err != nil {
@@ -40,6 +58,11 @@ func main() {
 	bookHandler := handlers.NewBookHandler(bookService, validator)
 	bookHandler.SetupRoutes(apiV1)
 
-	app.Listen(":3000")
+	app.Hooks().OnListen(func(listenData fiber.ListenData) error {
+		logger.Info("Server started", slog.String("address", serverAddr))
+		return nil
+	})
+
+	app.Listen(serverAddr)
 
 }
