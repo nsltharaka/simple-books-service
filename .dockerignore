@@ -1,0 +1,18 @@
+# Build artifacts
+books.db
+build/
+.env
+
+# Editor/IDE stuff
+.vscode/
+
+# Git
+.git
+.gitignore
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Tests
+**/*_test.go

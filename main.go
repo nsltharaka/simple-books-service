@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"log/slog"
 	"net"
 	"os"
@@ -16,7 +17,7 @@ import (
 
 func envConfig() string {
 	if err := godotenv.Load(); err != nil {
-		panic("error passing environment variables")
+		log.Println("Error loading .env file, using default values")
 	}
 
 	host := os.Getenv("HOST")
