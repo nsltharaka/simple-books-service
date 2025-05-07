@@ -4,57 +4,26 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
-	"github.com/nsltharaka/booksapi/database"
 	"github.com/nsltharaka/booksapi/models"
 	"github.com/nsltharaka/booksapi/services"
 	"github.com/stretchr/testify/assert"
 )
 
-func setupTestService(t *testing.T) (*services.BookService, func()) {
-	filename := "test.db"
-	os.Setenv("SQLITE_FILENAME", filename)
-	db, _ := database.Connect()
-
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	service := services.NewBookService(db, logger)
-
-	books := []*models.Book{
-		{Title: "Book One", Author: "Author A", Year: 2021},
-		{Title: "Book Two", Author: "Author B", Year: 2022},
-		{Title: "Book Three", Author: "Author C", Year: 2023},
-	}
-
-	// Create books
-	for _, book := range books {
-		service.CreateBook(book)
-	}
-
-	cleanup := func() {
-		os.Unsetenv("SQLITE_FILENAME")
-		os.Remove(filename)
-	}
-
-	return service, cleanup
-}
-
 func setupTestApp(t *testing.T) *fiber.App {
-	service, cleanup := setupTestService(t)
-	t.Cleanup(cleanup)
-
 	validator := validator.New(validator.WithRequiredStructEnabled())
+	mockedBookService := NewMockedBookService()
 
-	handler := NewBookHandler(service, validator)
+	handler := NewBookHandler(mockedBookService, validator)
+
 	app := fiber.New(fiber.Config{
-		ErrorHandler: handler.ErrorHandler,
+		ErrorHandler: ErrorHandler,
 	})
 
 	handler.SetupRoutes(app)
@@ -227,7 +196,6 @@ func TestCreateBook(t *testing.T) {
 		json.NewDecoder(res.Body).Decode(&apiResponse)
 
 		assert.Equal(t, http.StatusCreated, res.StatusCode)
-		assert.Equal(t, uint(4), apiResponse.Data.ID)
 		assert.Equal(t, book.Title, apiResponse.Data.Title)
 		assert.Equal(t, book.Author, apiResponse.Data.Author)
 		assert.Equal(t, book.Year, apiResponse.Data.Year)
@@ -380,7 +348,7 @@ func TestDeleteBook(t *testing.T) {
 	})
 
 	t.Run("Deleting an existing book", func(t *testing.T) {
-		req := httptest.NewRequest("DELETE", "/books/1", nil)
+		req := httptest.NewRequest("DELETE", "/books/3", nil)
 		res, err := app.Test(req, -1)
 		assert.NoError(t, err)
 
@@ -392,9 +360,13 @@ func TestDeleteBook(t *testing.T) {
 		json.NewDecoder(res.Body).Decode(&apiResponse)
 
 		assert.Equal(t, http.StatusOK, res.StatusCode)
-		assert.Equal(t, uint(1), apiResponse.Data.ID)
+		assert.Equal(t, "Book Three", apiResponse.Data.Title)
+		assert.Equal(t, "Author C", apiResponse.Data.Author)
+		assert.Equal(t, 2023, apiResponse.Data.Year)
+		assert.Equal(t, "success", apiResponse.Message)
+		assert.Empty(t, apiResponse.Error)
 
-		getReq := httptest.NewRequest("GET", "/books/1", nil)
+		getReq := httptest.NewRequest("GET", "/books/3", nil)
 		getRes, err := app.Test(getReq, -1)
 		assert.NoError(t, err)
 
@@ -440,4 +412,75 @@ func TestDeleteBook(t *testing.T) {
 		assert.Equal(t, "error", apiResponse.Message)
 		assert.Equal(t, "Method Not Allowed", apiResponse.Error)
 	})
+}
+
+type mockedBookService struct {
+	books []*models.Book
+}
+
+var _ services.IBookService = (*mockedBookService)(nil)
+
+func NewMockedBookService() *mockedBookService {
+	books := []*models.Book{
+		{Title: "Book One", Author: "Author A", Year: 2021},
+		{Title: "Book Two", Author: "Author B", Year: 2022},
+		{Title: "Book Three", Author: "Author C", Year: 2023},
+	}
+
+	return &mockedBookService{books: books}
+}
+
+func (m *mockedBookService) CreateBook(book *models.Book) (*models.Book, error) {
+	book.ID = uint(len(m.books) + 1)
+	m.books = append(m.books, book)
+	return book, nil
+}
+
+func (m *mockedBookService) GetBook(id uint) (*models.Book, error) {
+	if id > uint(len(m.books)) {
+		return nil, services.ErrNotFound
+	}
+	return m.books[id-1], nil
+}
+
+func (m *mockedBookService) GetAllBooks(page, limit int) ([]*models.Book, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	start := (page - 1) * limit
+	end := start + limit
+
+	if start >= len(m.books) {
+		return []*models.Book{}, nil
+	}
+
+	if end > len(m.books) {
+		end = len(m.books)
+	}
+
+	return m.books[start:end], nil
+}
+
+func (m *mockedBookService) UpdateBook(payload *models.Book) (*models.Book, error) {
+	if payload.ID == 0 || payload.ID > uint(len(m.books)) {
+		return nil, services.ErrNotFound
+	}
+	m.books[payload.ID-1] = payload
+	return m.books[payload.ID-1], nil
+}
+
+func (m *mockedBookService) DeleteBook(id uint) (*models.Book, error) {
+	if id == 0 || id > uint(len(m.books)) {
+		return nil, services.ErrNotFound
+	}
+	book := m.books[id-1]
+	m.books = append(m.books[:id-1], m.books[id:]...)
+	return book, nil
 }

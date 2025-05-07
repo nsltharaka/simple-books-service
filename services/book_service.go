@@ -13,6 +13,16 @@ var (
 	ErrNotFound = errors.New("book not found")
 )
 
+type IBookService interface {
+	GetAllBooks(page, limit int) ([]*models.Book, error)
+	GetBook(id uint) (*models.Book, error)
+	CreateBook(book *models.Book) (*models.Book, error)
+	UpdateBook(payload *models.Book) (*models.Book, error)
+	DeleteBook(id uint) (*models.Book, error)
+}
+
+var _ IBookService = (*BookService)(nil)
+
 type BookService struct {
 	db     *gorm.DB
 	logger *slog.Logger

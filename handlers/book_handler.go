@@ -10,27 +10,7 @@ import (
 	"github.com/nsltharaka/booksapi/services"
 )
 
-type BookHandler struct {
-	bookService *services.BookService
-	validate    *validator.Validate
-}
-
-func NewBookHandler(service *services.BookService, validator *validator.Validate) *BookHandler {
-	return &BookHandler{
-		bookService: service,
-		validate:    validator,
-	}
-}
-
-func (handler *BookHandler) SetupRoutes(router fiber.Router) {
-	router.Get("/books", handler.getAllBooks)
-	router.Get("/books/:id", handler.getBook)
-	router.Post("/books", handler.newBook)
-	router.Put("/books/:id", handler.updateBook)
-	router.Delete("/books/:id", handler.deleteBook)
-}
-
-func (handler *BookHandler) ErrorHandler(c *fiber.Ctx, err error) error {
+func ErrorHandler(c *fiber.Ctx, err error) error {
 
 	code := fiber.StatusInternalServerError
 
@@ -45,6 +25,26 @@ func (handler *BookHandler) ErrorHandler(c *fiber.Ctx, err error) error {
 		Message: "error",
 		Error:   err.Error(),
 	})
+}
+
+type BookHandler struct {
+	bookService services.IBookService
+	validate    *validator.Validate
+}
+
+func NewBookHandler(service services.IBookService, validator *validator.Validate) *BookHandler {
+	return &BookHandler{
+		bookService: service,
+		validate:    validator,
+	}
+}
+
+func (handler *BookHandler) SetupRoutes(router fiber.Router) {
+	router.Get("/books", handler.getAllBooks)
+	router.Get("/books/:id", handler.getBook)
+	router.Post("/books", handler.newBook)
+	router.Put("/books/:id", handler.updateBook)
+	router.Delete("/books/:id", handler.deleteBook)
 }
 
 func (handler *BookHandler) getAllBooks(c *fiber.Ctx) error {
@@ -68,8 +68,8 @@ func (handler *BookHandler) getAllBooks(c *fiber.Ctx) error {
 	}
 
 	return c.Status(http.StatusOK).JSON(apiResponse{
-		Data:    books,
 		Message: "success",
+		Data:    books,
 	})
 }
 
@@ -88,8 +88,8 @@ func (handler *BookHandler) getBook(c *fiber.Ctx) error {
 	}
 
 	return c.Status(http.StatusOK).JSON(apiResponse{
-		Data:    book,
 		Message: "success",
+		Data:    book,
 	})
 }
 
@@ -112,8 +112,8 @@ func (handler *BookHandler) newBook(c *fiber.Ctx) error {
 	}
 
 	return c.Status(http.StatusCreated).JSON(apiResponse{
-		Data:    createdBook,
 		Message: "success",
+		Data:    createdBook,
 	})
 
 }
@@ -146,8 +146,8 @@ func (handler *BookHandler) updateBook(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(apiResponse{
-		Data:    updatedBook,
 		Message: "success",
+		Data:    updatedBook,
 	})
 
 }
@@ -167,13 +167,13 @@ func (handler *BookHandler) deleteBook(c *fiber.Ctx) error {
 	}
 
 	return c.Status(http.StatusOK).JSON(apiResponse{
-		Data:    book,
 		Message: "success",
+		Data:    book,
 	})
 }
 
 type apiResponse struct {
-	Data    any    `json:"data,omitempty"`
 	Message string `json:"message,omitempty"`
 	Error   string `json:"error,omitempty"`
+	Data    any    `json:"data,omitempty"`
 }

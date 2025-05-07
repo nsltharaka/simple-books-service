@@ -24,20 +24,20 @@ func main() {
 		panic("error passing environment variables")
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	validator := validator.New(validator.WithRequiredStructEnabled())
-
-	bookService := services.NewBookService(db, logger)
-	bookHandler := handlers.NewBookHandler(bookService, validator)
-
 	config := fiber.Config{
-		ErrorHandler: bookHandler.ErrorHandler,
+		ErrorHandler: handlers.ErrorHandler,
 	}
 
 	app := fiber.New(config)
 	app.Use(cors.New())
 
 	apiV1 := app.Group("/api").Group("/v1")
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	validator := validator.New(validator.WithRequiredStructEnabled())
+
+	bookService := services.NewBookService(db, logger)
+	bookHandler := handlers.NewBookHandler(bookService, validator)
 	bookHandler.SetupRoutes(apiV1)
 
 	app.Listen(":3000")
