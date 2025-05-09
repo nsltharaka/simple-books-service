@@ -19,7 +19,7 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 		code = e.Code
 	}
 
-	c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+	c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 	return c.Status(code).JSON(apiResponse{
 		Message: "error",
