@@ -40,7 +40,7 @@ func main() {
 
 	db, err := database.Connect()
 	if err != nil {
-		panic("error passing environment variables")
+		panic("error in creating database connection")
 	}
 
 	config := fiber.Config{
